@@ -1,21 +1,14 @@
-# macOS system files
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+
+# env files
+.env*
+!.env.example
+
+# misc
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-.AppleDouble
-.LSOverride
-
-# Icon must end with two \r
-Icon
-
-# Thumbnails
-ehthumbs.db
-ehthumbs_vista.db
-
-# Folder config file
-Desktop.ini
-
-# Recycle Bin used on file shares
-$RECYCLE.BIN/
+*.pem
