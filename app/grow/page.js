@@ -14,9 +14,9 @@ const GROWS = {
       { id: "m1", name: "Marrakesh #1", strain: "Marrakesh", type: "Indica-Leaning Hybrid", genetics: "Moroccan Peaches × Canal Street Runtz", breeder: "Purple City Genetics", pot: "7gal", emoji: "🟠", color: "#E8874A" },
       { id: "m2", name: "Marrakesh #2", strain: "Marrakesh", type: "Indica-Leaning Hybrid", genetics: "Moroccan Peaches × Canal Street Runtz", breeder: "Purple City Genetics", pot: "7gal", emoji: "🟠", color: "#E8874A" },
       { id: "m3", name: "Marrakesh #3", strain: "Marrakesh", type: "Indica-Leaning Hybrid", genetics: "Moroccan Peaches × Canal Street Runtz", breeder: "Purple City Genetics", pot: "7gal", emoji: "🟠", color: "#E8874A" },
-      { id: "p1", name: "Papa Smurf #1", strain: "Papa Smurf", type: "Sativa-Dominant Hybrid", genetics: "Blue Dream × Cotton Candy", breeder: "Atlas Seeds", pot: "7gal", emoji: "🟢", color: "#5BAD72" },
-      { id: "p2", name: "Papa Smurf #2", strain: "Papa Smurf", type: "Sativa-Dominant Hybrid", genetics: "Blue Dream × Cotton Candy", breeder: "Atlas Seeds", pot: "7gal", emoji: "🟢", color: "#5BAD72" },
-      { id: "t1", name: "Thai Star", strain: "Thai Star", type: "THCV Sativa-Dominant", genetics: "Thai × Caprichosa Thai", breeder: "Seedsman", pot: "7gal", emoji: "🔵", color: "#4A8FD4" },
+      { id: "ps1", name: "Papa Smurf #1", strain: "Papa Smurf", type: "Sativa-Dominant Hybrid", genetics: "Blue Dream × Cotton Candy", breeder: "Atlas Seeds", pot: "7gal", emoji: "🟢", color: "#5BAD72" },
+      { id: "ps2", name: "Papa Smurf #2", strain: "Papa Smurf", type: "Sativa-Dominant Hybrid", genetics: "Blue Dream × Cotton Candy", breeder: "Atlas Seeds", pot: "7gal", emoji: "🟢", color: "#5BAD72" },
+      { id: "ts1", name: "Thai Star", strain: "Thai Star", type: "THCV Sativa-Dominant", genetics: "Thai × Caprichosa Thai", breeder: "Seedsman", pot: "7gal", emoji: "🔵", color: "#4A8FD4" },
     ],
     season: [
       { month: "May", phase: "Repotting", done: true },
@@ -183,7 +183,7 @@ function SeedCard({ plant }) {
 }
 
 function PlantCard({ plant, logs, onCheckIn }) {
-  const plantLogs = logs.filter(l => l.plantId === plant.id);
+  const plantLogs = logs.filter(l => l.plantId.toLowerCase() === plant.id.toLowerCase());
   const latest = plantLogs[plantLogs.length - 1];
   const daysSince = latest ? Math.floor((Date.now() - new Date(latest.savedAt)) / 86400000) : null;
 
@@ -341,7 +341,8 @@ export default function GrowTracker() {
 
   const grow = activeGrow === "summer2026" ? GROWS.summer2026 : GROWS.winter2026;
   const isPlanning = grow.status === "planning";
-  const growLogs = logs.filter(l => l.growId === grow.id);
+  const growPlantIds = new Set(grow.plants.map(p => p.id.toLowerCase()));
+  const growLogs = logs.filter(l => growPlantIds.has(l.plantId.toLowerCase()));
 
   const handleSave = async (entry) => {
     setLogs(prev => [...prev, entry]);
@@ -452,7 +453,7 @@ export default function GrowTracker() {
               </div>
             ) : (
               [...growLogs].reverse().map((entry, i) => {
-                const plant = grow.plants.find(p => p.id === entry.plantId);
+                const plant = grow.plants.find(p => p.id.toLowerCase() === entry.plantId.toLowerCase());
                 return (
                   <div key={i} style={{ background: "#0D100D", border: "1px solid #1a2a1a", borderRadius: "8px", padding: "1rem", marginBottom: "10px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>

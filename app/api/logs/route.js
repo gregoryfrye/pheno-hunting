@@ -1,10 +1,7 @@
 import { getLogs, saveLog } from "@/lib/grow-notion";
 
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const plantId = searchParams.get("plantId") ?? undefined;
-  const growId = searchParams.get("growId") ?? undefined;
-  const logs = await getLogs({ plantId, growId });
+export async function GET() {
+  const logs = await getLogs();
   return Response.json(logs);
 }
 
