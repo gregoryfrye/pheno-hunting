@@ -1,8 +1,11 @@
 import { getPlants } from "@/lib/grow-notion";
 
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const growSlug = searchParams.get("growSlug") ?? undefined;
-  const plants = await getPlants(growSlug);
-  return Response.json(plants);
+export async function GET() {
+  try {
+    const plants = await getPlants();
+    return Response.json(plants);
+  } catch (e) {
+    console.error("[/api/plants GET] ERROR:", e.code, e.status, e.message);
+    return Response.json({ error: e.message, code: e.code, status: e.status }, { status: 500 });
+  }
 }

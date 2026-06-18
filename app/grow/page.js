@@ -2,6 +2,53 @@
 
 import { useState, useEffect } from "react";
 
+// ─── Phenophase timeline + weekly context (not in Notion) ────────────────────
+const SEASON_DATA = {
+  "Summer 2026": {
+    accentColor: "#5BAD72",
+    season: [
+      { month: "May",       phase: "Repotting",  done: true  },
+      { month: "June",      phase: "Vegging",    done: false, current: true },
+      { month: "July",      phase: "Pruning",    done: false },
+      { month: "August",    phase: "Flowering",  done: false },
+      { month: "September", phase: "Ripening",   done: false },
+      { month: "October",   phase: "Harvesting", done: false },
+    ],
+    weeklyContext: {
+      phase: "Vegging",
+      focus: [
+        "Establish watering rhythm — fabric pots on a deck dry fast",
+        "Watch for nitrogen deficiency as Stonington Blend nutrients deplete",
+        "Begin LST (low stress training) if plants are vigorous",
+        "Note height and node spacing per plant",
+      ],
+      tip: "Stonington Blend is nutrient-rich — hold off on feeding until you see signs of deficiency or plants slow down.",
+    },
+  },
+  "Winter 2026": {
+    accentColor: "#7A9CC4",
+    season: [
+      { month: "Oct", phase: "Planning",    done: false, current: true },
+      { month: "Nov", phase: "Germination", done: false },
+      { month: "Dec", phase: "Seedling",    done: false },
+      { month: "Jan", phase: "Veg",         done: false },
+      { month: "Feb", phase: "Flower",      done: false },
+      { month: "Mar", phase: "Harvest",     done: false },
+    ],
+  },
+};
+
+const WINTER_CHECKLIST_INIT = [
+  { id: "lights",      label: "Acquire grow lights",         done: false },
+  { id: "tent",        label: "Set up grow tent / space",    done: false },
+  { id: "medium",      label: "Choose growing medium",       done: false },
+  { id: "pots",        label: "Select pot size",             done: false },
+  { id: "ventilation", label: "Ventilation & humidity plan", done: false },
+  { id: "timer",       label: "Light timer (18/6 schedule)", done: false },
+];
+
+/*
+// ─── FALLBACK: hardcoded grows — remove once Notion fetch confirmed working ────
 const GROWS = {
   summer2026: {
     id: "summer2026",
@@ -11,20 +58,17 @@ const GROWS = {
     medium: "Stonington Blend / 7-gal Fabric",
     accentColor: "#5BAD72",
     plants: [
-      { id: "m1", name: "Marrakesh #1", strain: "Marrakesh", type: "Indica-Leaning Hybrid", genetics: "Moroccan Peaches × Canal Street Runtz", breeder: "Purple City Genetics", pot: "7gal", emoji: "🟠", color: "#E8874A" },
-      { id: "m2", name: "Marrakesh #2", strain: "Marrakesh", type: "Indica-Leaning Hybrid", genetics: "Moroccan Peaches × Canal Street Runtz", breeder: "Purple City Genetics", pot: "7gal", emoji: "🟠", color: "#E8874A" },
-      { id: "m3", name: "Marrakesh #3", strain: "Marrakesh", type: "Indica-Leaning Hybrid", genetics: "Moroccan Peaches × Canal Street Runtz", breeder: "Purple City Genetics", pot: "7gal", emoji: "🟠", color: "#E8874A" },
-      { id: "ps1", name: "Papa Smurf #1", strain: "Papa Smurf", type: "Sativa-Dominant Hybrid", genetics: "Blue Dream × Cotton Candy", breeder: "Atlas Seeds", pot: "7gal", emoji: "🟢", color: "#5BAD72" },
-      { id: "ps2", name: "Papa Smurf #2", strain: "Papa Smurf", type: "Sativa-Dominant Hybrid", genetics: "Blue Dream × Cotton Candy", breeder: "Atlas Seeds", pot: "7gal", emoji: "🟢", color: "#5BAD72" },
-      { id: "ts1", name: "Thai Star", strain: "Thai Star", type: "THCV Sativa-Dominant", genetics: "Thai × Caprichosa Thai", breeder: "Seedsman", pot: "7gal", emoji: "🔵", color: "#4A8FD4" },
+      { id: "m1",  name: "Marrakesh #1",    strain: "Marrakesh",   type: "Indica-Leaning Hybrid",    genetics: "Moroccan Peaches × Canal Street Runtz", breeder: "Purple City Genetics", pot: "7gal", emoji: "🟠", color: "#E8874A" },
+      { id: "m2",  name: "Marrakesh #2",    strain: "Marrakesh",   type: "Indica-Leaning Hybrid",    genetics: "Moroccan Peaches × Canal Street Runtz", breeder: "Purple City Genetics", pot: "7gal", emoji: "🟠", color: "#E8874A" },
+      { id: "m3",  name: "Marrakesh #3",    strain: "Marrakesh",   type: "Indica-Leaning Hybrid",    genetics: "Moroccan Peaches × Canal Street Runtz", breeder: "Purple City Genetics", pot: "7gal", emoji: "🟠", color: "#E8874A" },
+      { id: "ps1", name: "Papa Smurf #1",   strain: "Papa Smurf",  type: "Sativa-Dominant Hybrid",   genetics: "Blue Dream × Cotton Candy",             breeder: "Atlas Seeds",          pot: "7gal", emoji: "🟢", color: "#5BAD72" },
+      { id: "ps2", name: "Papa Smurf #2",   strain: "Papa Smurf",  type: "Sativa-Dominant Hybrid",   genetics: "Blue Dream × Cotton Candy",             breeder: "Atlas Seeds",          pot: "7gal", emoji: "🟢", color: "#5BAD72" },
+      { id: "ts1", name: "Thai Star",        strain: "Thai Star",   type: "THCV Sativa-Dominant",     genetics: "Thai × Caprichosa Thai",                breeder: "Seedsman",             pot: "7gal", emoji: "🔵", color: "#4A8FD4" },
     ],
     season: [
-      { month: "May", phase: "Repotting", done: true },
-      { month: "June", phase: "Vegging", done: false, current: true },
-      { month: "July", phase: "Pruning", done: false },
-      { month: "August", phase: "Flowering", done: false },
-      { month: "September", phase: "Ripening", done: false },
-      { month: "October", phase: "Harvesting", done: false },
+      { month: "May", phase: "Repotting", done: true }, { month: "June", phase: "Vegging", done: false, current: true },
+      { month: "July", phase: "Pruning", done: false }, { month: "August", phase: "Flowering", done: false },
+      { month: "September", phase: "Ripening", done: false }, { month: "October", phase: "Harvesting", done: false },
     ],
     weeklyContext: {
       phase: "Vegging",
@@ -58,16 +102,14 @@ const GROWS = {
       { id: "timer", label: "Light timer (18/6 schedule)", done: false },
     ],
     season: [
-      { month: "Oct", phase: "Planning", done: false, current: true },
-      { month: "Nov", phase: "Germination", done: false },
-      { month: "Dec", phase: "Seedling", done: false },
-      { month: "Jan", phase: "Veg", done: false },
-      { month: "Feb", phase: "Flower", done: false },
-      { month: "Mar", phase: "Harvest", done: false },
+      { month: "Oct", phase: "Planning", done: false, current: true }, { month: "Nov", phase: "Germination", done: false },
+      { month: "Dec", phase: "Seedling", done: false }, { month: "Jan", phase: "Veg", done: false },
+      { month: "Feb", phase: "Flower", done: false }, { month: "Mar", phase: "Harvest", done: false },
     ],
     notes: "",
   },
 };
+*/
 
 const HEALTH_OPTIONS = ["Excellent", "Good", "Fair", "Concern"];
 const HEALTH_COLORS = { Excellent: "#5BAD72", Good: "#A8C56A", Fair: "#E8C14A", Concern: "#E8614A" };
@@ -157,7 +199,7 @@ Give 2-3 specific, actionable observations or recommendations for this plant rig
           </div>
         )}
 
-        <button onClick={() => onSave({ ...form, plantId: plant.id, plantName: plant.name, growId: grow.id, savedAt: new Date().toISOString() })}
+        <button onClick={() => onSave({ ...form, plantId: plant.id, plantName: plant.name, growId: grow.notionId, savedAt: new Date().toISOString() })}
           style={{ width: "100%", padding: "12px", background: plant.color, border: "none", borderRadius: "6px", color: "#0D100D", fontFamily: "'Courier New', monospace", fontSize: "0.8rem", fontWeight: "700", letterSpacing: "0.1em", cursor: "pointer" }}>
           SAVE CHECK-IN
         </button>
@@ -236,7 +278,7 @@ function PlantCard({ plant, logs, onCheckIn }) {
   );
 }
 
-function WinterPlanning({ grow, checklist, onToggle, notes, onNotesChange }) {
+function WinterPlanning({ grow, plants, checklist, onToggle, notes, onNotesChange }) {
   const done = checklist.filter(i => i.done).length;
   const pct = Math.round((done / checklist.length) * 100);
 
@@ -247,7 +289,7 @@ function WinterPlanning({ grow, checklist, onToggle, notes, onNotesChange }) {
       <div style={{ marginBottom: "1.25rem" }}>
         <div style={{ fontSize: "0.6rem", letterSpacing: "0.12em", color: "#7A9CC4", marginBottom: "8px" }}>SEEDS IN HAND</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-          {grow.plants.map(p => <SeedCard key={p.id} plant={p} />)}
+          {plants.map(p => <SeedCard key={p.id} plant={p} />)}
         </div>
       </div>
 
@@ -324,25 +366,62 @@ function WinterAdvisor() {
 }
 
 export default function GrowTracker() {
-  const [activeGrow, setActiveGrow] = useState("summer2026");
+  const [grows, setGrows] = useState([]);
+  const [plants, setPlants] = useState([]);
+  const [activeGrowId, setActiveGrowId] = useState(null);
   const [logs, setLogs] = useState([]);
   const [checkingIn, setCheckingIn] = useState(null);
   const [view, setView] = useState("plants");
-  const [winterChecklist, setWinterChecklist] = useState(GROWS.winter2026.checklist);
+  const [winterChecklist, setWinterChecklist] = useState(WINTER_CHECKLIST_INIT);
   const [winterNotes, setWinterNotes] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   useEffect(() => {
+    fetch("/api/grows")
+      .then(r => r.json())
+      .then(data => {
+        if (!Array.isArray(data) || data.length === 0) return;
+        setGrows(data);
+        // Default to first active grow, else first in list
+        const active = data.find(g => g.status?.toLowerCase() === "active") ?? data[0];
+        setActiveGrowId(active.notionId);
+      })
+      .catch(() => {});
+
+    fetch("/api/plants")
+      .then(r => r.json())
+      .then(data => {
+        if (!Array.isArray(data)) return;
+        // Normalize: add derived type/genetics so PlantCard/SeedCard/CheckInForm need no changes
+        setPlants(data.map(p => ({
+          ...p,
+          type:     p.strain?.category || p.strain?.type || "",
+          genetics: p.strain?.genetics || "",
+          color:    p.color || "#667",
+        })));
+      })
+      .catch(() => {});
+
     fetch("/api/logs")
       .then(r => r.json())
       .then(data => { if (Array.isArray(data) && data.length > 0) setLogs(data); })
       .catch(() => {});
   }, []);
 
-  const grow = activeGrow === "summer2026" ? GROWS.summer2026 : GROWS.winter2026;
-  const isPlanning = grow.status === "planning";
-  const growPlantIds = new Set(grow.plants.map(p => p.id.toLowerCase()));
-  const growLogs = logs.filter(l => growPlantIds.has(l.plantId.toLowerCase()));
+  // Merge Notion grow data with hardcoded season/context
+  const rawGrow = grows.find(g => g.notionId === activeGrowId) ?? null;
+  const seasonData = rawGrow ? (SEASON_DATA[rawGrow.name] ?? {}) : {};
+  const grow = rawGrow ? {
+    ...rawGrow,
+    accentColor:   seasonData.accentColor ?? "#5BAD72",
+    season:        seasonData.season ?? [],
+    weeklyContext: seasonData.weeklyContext ?? null,
+  } : null;
+
+  const isPlanning = grow?.status?.toLowerCase() === "planning";
+  const growPlants = grow ? plants.filter(p => p.grow === grow.name) : [];
+  const growPlantIds = new Set(growPlants.map(p => p.id));
+  const growLogs = logs.filter(l => growPlantIds.has(l.plantId));
 
   const handleSave = async (entry) => {
     setLogs(prev => [...prev, entry]);
@@ -358,7 +437,15 @@ export default function GrowTracker() {
 
   const toggleChecklist = (id) => setWinterChecklist(prev => prev.map(i => i.id === id ? { ...i, done: !i.done } : i));
 
-  const switchGrow = (id) => { setActiveGrow(id); setDropdownOpen(false); setView("plants"); };
+  const switchGrow = (id) => { setActiveGrowId(id); setDropdownOpen(false); setView("plants"); };
+
+  if (!grow) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0A0C0A", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontFamily: "'Courier New', monospace", fontSize: "0.7rem", color: "#334", letterSpacing: "0.1em" }}>LOADING...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: "#0A0C0A", color: "#c8d8c4", fontFamily: "'Courier New', monospace" }}>
@@ -371,31 +458,35 @@ export default function GrowTracker() {
               <button onClick={() => setDropdownOpen(o => !o)}
                 style={{ background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <div style={{ fontSize: "1.2rem", fontWeight: "700", color: "#d4e8d0", letterSpacing: "0.02em" }}>{grow.label}</div>
+                  <div style={{ fontSize: "1.2rem", fontWeight: "700", color: "#d4e8d0", letterSpacing: "0.02em" }}>{grow.name}</div>
                   <div style={{ fontSize: "0.7rem", color: grow.accentColor, marginTop: "2px" }}>▾</div>
                 </div>
                 <div style={{ fontSize: "0.62rem", color: grow.accentColor, letterSpacing: "0.08em", marginTop: "1px" }}>
-                  {isPlanning ? "● PLANNING" : "● ACTIVE"} — {grow.sublabel.toUpperCase()}
+                  {isPlanning ? "● PLANNING" : "● ACTIVE"}{grow.location ? ` — ${grow.location.toUpperCase()}` : ""}
                 </div>
               </button>
 
               {dropdownOpen && (
                 <div style={{ position: "absolute", top: "100%", left: 0, marginTop: "6px", background: "#111712", border: "1px solid #2a3a2a", borderRadius: "8px", overflow: "hidden", zIndex: 50, minWidth: "200px", boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
-                  {Object.values(GROWS).map(g => (
-                    <button key={g.id} onClick={() => switchGrow(g.id)}
-                      style={{ display: "block", width: "100%", padding: "10px 14px", background: g.id === activeGrow ? "#1a2a1a" : "transparent", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "1px solid #1a2a1a" }}>
-                      <div style={{ fontFamily: "'Courier New', monospace", fontSize: "0.78rem", color: g.id === activeGrow ? g.accentColor : "#889", fontWeight: "700" }}>{g.label}</div>
-                      <div style={{ fontFamily: "'Courier New', monospace", fontSize: "0.6rem", color: "#445", marginTop: "2px" }}>{g.status === "planning" ? "Planning" : "Active"} · {g.plants.length} plants</div>
-                    </button>
-                  ))}
+                  {grows.map(g => {
+                    const gAccent = SEASON_DATA[g.name]?.accentColor ?? "#5BAD72";
+                    const gPlantCount = plants.filter(p => p.grow === g.name).length;
+                    return (
+                      <button key={g.notionId} onClick={() => switchGrow(g.notionId)}
+                        style={{ display: "block", width: "100%", padding: "10px 14px", background: g.notionId === activeGrowId ? "#1a2a1a" : "transparent", border: "none", textAlign: "left", cursor: "pointer", borderBottom: "1px solid #1a2a1a" }}>
+                        <div style={{ fontFamily: "'Courier New', monospace", fontSize: "0.78rem", color: g.notionId === activeGrowId ? gAccent : "#889", fontWeight: "700" }}>{g.name}</div>
+                        <div style={{ fontFamily: "'Courier New', monospace", fontSize: "0.6rem", color: "#445", marginTop: "2px" }}>{g.status?.toLowerCase() === "planning" ? "Planning" : "Active"} · {gPlantCount} plants</div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
 
           <div style={{ textAlign: "right", paddingTop: "4px" }}>
-            <div style={{ fontSize: "0.58rem", color: "#334", letterSpacing: "0.1em" }}>{grow.plants.length} PLANTS</div>
-            <div style={{ fontSize: "0.58rem", color: "#334", letterSpacing: "0.1em", marginTop: "2px" }}>{grow.medium.toUpperCase()}</div>
+            <div style={{ fontSize: "0.58rem", color: "#334", letterSpacing: "0.1em" }}>{growPlants.length} PLANTS</div>
+            <div style={{ fontSize: "0.58rem", color: "#334", letterSpacing: "0.1em", marginTop: "2px" }}>{grow.medium ? grow.medium.toUpperCase() : ""}</div>
           </div>
         </div>
 
@@ -422,25 +513,27 @@ export default function GrowTracker() {
 
       <div style={{ padding: "1rem" }}>
         {isPlanning && (
-          <WinterPlanning grow={grow} checklist={winterChecklist} onToggle={toggleChecklist} notes={winterNotes} onNotesChange={setWinterNotes} />
+          <WinterPlanning grow={grow} plants={growPlants} checklist={winterChecklist} onToggle={toggleChecklist} notes={winterNotes} onNotesChange={setWinterNotes} />
         )}
 
         {!isPlanning && view === "plants" && (
           <>
-            <div style={{ background: "#0D100D", border: "1px solid #1a3a1a", borderRadius: "8px", padding: "1rem", marginBottom: "1.25rem" }}>
-              <div style={{ fontSize: "0.6rem", letterSpacing: "0.12em", color: "#5BAD72", marginBottom: "8px" }}>THIS WEEK — JUNE / VEGGING</div>
-              {grow.weeklyContext.focus.map((f, i) => (
-                <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "5px" }}>
-                  <span style={{ color: "#5BAD72", fontSize: "0.65rem" }}>›</span>
-                  <span style={{ fontSize: "0.72rem", color: "#8aaa86", lineHeight: "1.4" }}>{f}</span>
+            {grow.weeklyContext && (
+              <div style={{ background: "#0D100D", border: "1px solid #1a3a1a", borderRadius: "8px", padding: "1rem", marginBottom: "1.25rem" }}>
+                <div style={{ fontSize: "0.6rem", letterSpacing: "0.12em", color: "#5BAD72", marginBottom: "8px" }}>THIS WEEK — JUNE / VEGGING</div>
+                {grow.weeklyContext.focus.map((f, i) => (
+                  <div key={i} style={{ display: "flex", gap: "8px", marginBottom: "5px" }}>
+                    <span style={{ color: "#5BAD72", fontSize: "0.65rem" }}>›</span>
+                    <span style={{ fontSize: "0.72rem", color: "#8aaa86", lineHeight: "1.4" }}>{f}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #1a2a1a", fontSize: "0.68rem", color: "#556", lineHeight: "1.5", fontStyle: "italic" }}>
+                  {grow.weeklyContext.tip}
                 </div>
-              ))}
-              <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid #1a2a1a", fontSize: "0.68rem", color: "#556", lineHeight: "1.5", fontStyle: "italic" }}>
-                {grow.weeklyContext.tip}
               </div>
-            </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              {grow.plants.map(p => <PlantCard key={p.id} plant={p} logs={logs} onCheckIn={setCheckingIn} />)}
+              {growPlants.map(p => <PlantCard key={p.id} plant={p} logs={logs} onCheckIn={setCheckingIn} />)}
             </div>
           </>
         )}
@@ -453,7 +546,7 @@ export default function GrowTracker() {
               </div>
             ) : (
               [...growLogs].reverse().map((entry, i) => {
-                const plant = grow.plants.find(p => p.id.toLowerCase() === entry.plantId.toLowerCase());
+                const plant = growPlants.find(p => p.id.toLowerCase() === entry.plantId.toLowerCase());
                 return (
                   <div key={i} style={{ background: "#0D100D", border: "1px solid #1a2a1a", borderRadius: "8px", padding: "1rem", marginBottom: "10px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
