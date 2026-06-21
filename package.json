@@ -10,6 +10,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.55.0",
     "@notionhq/client": "^2.2.15",
+    "heic2any": "^0.0.4",
     "next": "^16.2.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

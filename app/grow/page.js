@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // ─── Phenophase timeline + weekly context (not in Notion) ────────────────────
 const SEASON_DATA = {
@@ -365,12 +365,191 @@ function WinterAdvisor() {
   );
 }
 
+async function compressImage(file) {
+  let sourceBlob = file;
+
+  const isHeic =
+    file.type === "image/heic" || file.type === "image/heif" ||
+    file.name.toLowerCase().endsWith(".heic") || file.name.toLowerCase().endsWith(".heif");
+
+  if (isHeic) {
+    try {
+      const heic2any = (await import("heic2any")).default;
+      const result = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+      sourceBlob = Array.isArray(result) ? result[0] : result;
+    } catch {
+      return { blob: file, compressed: false };
+    }
+  }
+
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(sourceBlob);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1200;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width >= height) { height = Math.round(height * MAX / width); width = MAX; }
+        else { width = Math.round(width * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => resolve({ blob: blob ?? file, compressed: !!blob }),
+        "image/jpeg",
+        0.8
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ blob: file, compressed: false });
+    };
+
+    img.src = url;
+  });
+}
+
+function BatchUploadPanel({ accentColor, onClose }) {
+  const inputRef = useRef(null);
+  const [processedFiles, setProcessedFiles] = useState([]);
+  const [compressing, setCompressing] = useState(false);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const onFileChange = async (e) => {
+    const selected = Array.from(e.target.files).slice(0, 12);
+    setResult(null);
+    setError(null);
+    setCompressing(true);
+    const results = await Promise.all(selected.map(f => compressImage(f)));
+    setProcessedFiles(results.map((r, i) => ({
+      name: selected[i].name,
+      originalSize: selected[i].size,
+      compressedSize: r.blob.size,
+      blob: r.blob,
+      compressed: r.compressed,
+    })));
+    setCompressing(false);
+  };
+
+  const analyze = async () => {
+    if (!processedFiles.length) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      processedFiles.forEach(f => fd.append("images", f.blob, f.name));
+      const res = await fetch("/api/batch-analyze", { method: "POST", body: fd });
+      const json = await res.json();
+      setResult(json);
+    } catch (e) {
+      setError(e.message || "Upload failed");
+    }
+    setLoading(false);
+  };
+
+  const hasFiles = processedFiles.length > 0;
+  const isReady = hasFiles && !compressing;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,12,10,0.88)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "1rem" }}>
+      <div style={{ background: "#111712", border: `1px solid ${accentColor}40`, borderRadius: "12px", width: "100%", maxWidth: "480px", maxHeight: "90vh", overflowY: "auto", padding: "1.5rem" }}>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+          <div style={{ fontSize: "0.75rem", fontFamily: "'Courier New', monospace", color: accentColor, fontWeight: "700", letterSpacing: "0.1em" }}>↑ BATCH CHECK-IN</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#556", cursor: "pointer", fontSize: "1.2rem" }}>✕</button>
+        </div>
+
+        <div style={{ fontSize: "0.65rem", color: "#556", fontFamily: "'Courier New', monospace", marginBottom: "1rem", lineHeight: "1.6" }}>
+          Select 1–12 plant photos. Images are compressed in-browser before upload.
+        </div>
+
+        <input ref={inputRef} type="file" accept="image/*" multiple onChange={onFileChange} style={{ display: "none" }} />
+
+        <button onClick={() => inputRef.current?.click()} disabled={compressing}
+          style={{ width: "100%", padding: "10px", background: "#0D100D", border: `1px solid ${accentColor}50`, borderRadius: "6px", color: accentColor, fontFamily: "'Courier New', monospace", fontSize: "0.7rem", letterSpacing: "0.1em", cursor: compressing ? "default" : "pointer", marginBottom: "1rem", opacity: compressing ? 0.6 : 1 }}>
+          {compressing ? "COMPRESSING..." : `SELECT PHOTOS${hasFiles ? ` (${processedFiles.length} SELECTED)` : ""}`}
+        </button>
+
+        {compressing && (
+          <div style={{ fontSize: "0.65rem", color: "#445", fontFamily: "'Courier New', monospace", textAlign: "center", padding: "8px 0 1rem" }}>
+            Resizing and encoding...
+          </div>
+        )}
+
+        {!compressing && hasFiles && (
+          <div style={{ background: "#0D100D", border: "1px solid #1a2a1a", borderRadius: "6px", padding: "10px", marginBottom: "1rem" }}>
+            <div style={{ fontSize: "0.6rem", color: "#445", fontFamily: "'Courier New', monospace", letterSpacing: "0.1em", marginBottom: "8px" }}>
+              {processedFiles.length} FILE{processedFiles.length !== 1 ? "S" : ""} READY
+            </div>
+            {processedFiles.map((f, i) => (
+              <div key={i} style={{ padding: "5px 0", borderBottom: i < processedFiles.length - 1 ? "1px solid #1a2a1a" : "none" }}>
+                <div style={{ fontSize: "0.68rem", color: "#a8c4a0", fontFamily: "'Courier New', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+                  {f.compressed ? (
+                    <>
+                      <span style={{ fontSize: "0.58rem", color: "#445", fontFamily: "'Courier New', monospace" }}>{(f.originalSize / 1024).toFixed(0)} KB</span>
+                      <span style={{ fontSize: "0.58rem", color: "#334" }}>→</span>
+                      <span style={{ fontSize: "0.58rem", color: "#5BAD72", fontFamily: "'Courier New', monospace" }}>{(f.compressedSize / 1024).toFixed(0)} KB</span>
+                      <span style={{ fontSize: "0.55rem", color: "#445", fontFamily: "'Courier New', monospace" }}>
+                        ({Math.round((1 - f.compressedSize / f.originalSize) * 100)}% smaller)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: "0.58rem", color: "#445", fontFamily: "'Courier New', monospace" }}>{(f.originalSize / 1024).toFixed(0)} KB</span>
+                      <span style={{ fontSize: "0.58rem", color: "#E8874A", fontFamily: "'Courier New', monospace" }}>[ORIG — not compressed]</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={analyze} disabled={!isReady || loading}
+          style={{ width: "100%", padding: "12px", background: isReady ? accentColor : "#1a2a1a", border: "none", borderRadius: "6px", color: isReady ? "#0D100D" : "#334", fontFamily: "'Courier New', monospace", fontSize: "0.78rem", fontWeight: "700", letterSpacing: "0.1em", cursor: isReady ? "pointer" : "default", marginBottom: "1rem", opacity: loading ? 0.7 : 1 }}>
+          {loading ? "SENDING..." : "→ ANALYZE"}
+        </button>
+
+        {error && (
+          <div style={{ background: "#1a0D0D", border: "1px solid #E8614A40", borderRadius: "6px", padding: "10px", fontSize: "0.68rem", color: "#E8614A", fontFamily: "'Courier New', monospace" }}>
+            ERROR: {error}
+          </div>
+        )}
+
+        {result && (
+          <div style={{ background: "#0D100D", border: `1px solid ${accentColor}30`, borderRadius: "6px", padding: "12px" }}>
+            <div style={{ fontSize: "0.6rem", color: "#445", fontFamily: "'Courier New', monospace", letterSpacing: "0.1em", marginBottom: "8px" }}>SERVER RESPONSE</div>
+            <div style={{ fontSize: "0.8rem", color: accentColor, fontFamily: "'Courier New', monospace", fontWeight: "700", marginBottom: "8px" }}>
+              RECEIVED: {result.received} FILE{result.received !== 1 ? "S" : ""}
+            </div>
+            {result.files?.map((f, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
+                <div style={{ fontSize: "0.65rem", color: "#8aaa86", fontFamily: "'Courier New', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "75%" }}>{f.name}</div>
+                <div style={{ fontSize: "0.6rem", color: "#445", fontFamily: "'Courier New', monospace", flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function GrowTracker() {
   const [grows, setGrows] = useState([]);
   const [plants, setPlants] = useState([]);
   const [activeGrowId, setActiveGrowId] = useState(null);
   const [logs, setLogs] = useState([]);
   const [checkingIn, setCheckingIn] = useState(null);
+  const [batchOpen, setBatchOpen] = useState(false);
   const [view, setView] = useState("plants");
   const [winterChecklist, setWinterChecklist] = useState(WINTER_CHECKLIST_INIT);
   const [winterNotes, setWinterNotes] = useState("");
@@ -508,6 +687,10 @@ export default function GrowTracker() {
               {v === "plants" ? "PLANTS" : `LOG (${growLogs.length})`}
             </button>
           ))}
+          <button onClick={() => setBatchOpen(true)}
+            style={{ padding: "10px 14px", background: "none", border: "none", borderBottom: "2px solid transparent", borderLeft: "1px solid #1a2a1a", color: "#445", fontFamily: "'Courier New', monospace", fontSize: "0.65rem", letterSpacing: "0.1em", cursor: "pointer", whiteSpace: "nowrap" }}>
+            ↑ BATCH
+          </button>
         </div>
       )}
 
@@ -572,6 +755,7 @@ export default function GrowTracker() {
       </div>
 
       {checkingIn && <CheckInForm plant={checkingIn} grow={grow} onSave={handleSave} onClose={() => setCheckingIn(null)} />}
+      {batchOpen && <BatchUploadPanel accentColor={grow.accentColor} onClose={() => setBatchOpen(false)} />}
       {dropdownOpen && <div onClick={() => setDropdownOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />}
     </div>
   );
