@@ -111,8 +111,8 @@ const GROWS = {
 };
 */
 
-const HEALTH_OPTIONS = ["Excellent", "Good", "Fair", "Concern"];
-const HEALTH_COLORS = { Excellent: "#5BAD72", Good: "#A8C56A", Fair: "#E8C14A", Concern: "#E8614A" };
+const HEALTH_OPTIONS = ["Excellent", "Good", "Fair", "Poor", "Critical"];
+const HEALTH_COLORS = { Excellent: "#5BAD72", Good: "#A8C56A", Fair: "#E8C14A", Poor: "#E8914A", Critical: "#E8414A" };
 
 function CheckInForm({ plant, grow, onSave, onClose }) {
   const [form, setForm] = useState({ height: "", watering: "", health: "Good", leafColor: "", issues: "", notes: "" });
@@ -226,7 +226,9 @@ function SeedCard({ plant }) {
 
 function PlantCard({ plant, logs, onCheckIn }) {
   const plantLogs = logs.filter(l => l.plantId.toLowerCase() === plant.id.toLowerCase());
-  const latest = plantLogs[plantLogs.length - 1];
+  const latest = plantLogs.length
+    ? plantLogs.reduce((a, b) => new Date(a.savedAt) >= new Date(b.savedAt) ? a : b)
+    : null;
   const daysSince = latest ? Math.floor((Date.now() - new Date(latest.savedAt)) / 86400000) : null;
 
   return (
@@ -414,17 +416,22 @@ async function compressImage(file) {
   });
 }
 
-function BatchUploadPanel({ accentColor, onClose }) {
+const INPUT_STYLE = { width: "100%", background: "#0A0C0A", border: "1px solid #1e2e1e", borderRadius: "4px", color: "#a8c4a0", fontFamily: "'Courier New', monospace", fontSize: "0.7rem", padding: "6px 8px", boxSizing: "border-box" };
+const SELECT_STYLE = { ...INPUT_STYLE, cursor: "pointer" };
+const LABEL_STYLE = { fontSize: "0.55rem", color: "#445", fontFamily: "'Courier New', monospace", letterSpacing: "0.1em", marginBottom: "3px", display: "block" };
+
+function BatchUploadPanel({ accentColor, grow, onBatchSaved, onClose }) {
   const inputRef = useRef(null);
   const [processedFiles, setProcessedFiles] = useState([]);
   const [compressing, setCompressing] = useState(false);
-  const [result, setResult] = useState(null);
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
   const onFileChange = async (e) => {
     const selected = Array.from(e.target.files).slice(0, 12);
-    setResult(null);
+    setRows([]);
     setError(null);
     setCompressing(true);
     const results = await Promise.all(selected.map(f => compressImage(f)));
@@ -447,95 +454,215 @@ function BatchUploadPanel({ accentColor, onClose }) {
       processedFiles.forEach(f => fd.append("images", f.blob, f.name));
       const res = await fetch("/api/batch-analyze", { method: "POST", body: fd });
       const json = await res.json();
-      setResult(json);
+      if (json.error) throw new Error(json.error);
+      setRows((json.plants ?? []).map(p => ({
+        plantTag:   p.plantTag,
+        height:     p.heightInches != null ? String(p.heightInches) : "",
+        color:      p.color ?? "Green",
+        health:     p.health ?? "Good",
+        concerns:   (p.concerns ?? []).join(", "),
+        notes:      "",
+        photoCount: p.photoCount,
+        confidence: p.confidence,
+      })));
     } catch (e) {
-      setError(e.message || "Upload failed");
+      setError(e.message || "Analysis failed");
     }
     setLoading(false);
   };
 
+  const updateRow = (i, field, value) => {
+    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: value } : r));
+  };
+
+  const saveAll = async () => {
+    const toSave = rows.filter(r => r.plantTag);
+    if (!toSave.length) return;
+    setSaving(true);
+    try {
+      await Promise.all(toSave.map(r =>
+        fetch("/api/logs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            plantName: r.plantTag,
+            plantId:   r.plantTag.toLowerCase(),
+            growId:    grow?.notionId,
+            height:    r.height,
+            health:    r.health,
+            leafColor: r.color,
+            notes:     [r.concerns, r.notes].filter(Boolean).join(" — "),
+            savedAt:   new Date().toISOString(),
+          }),
+        })
+      ));
+      onBatchSaved?.();
+      onClose();
+    } catch (e) {
+      setError(e.message || "Save failed");
+    }
+    setSaving(false);
+  };
+
   const hasFiles = processedFiles.length > 0;
-  const isReady = hasFiles && !compressing;
+  const isReady  = hasFiles && !compressing;
+  const inReview = rows.length > 0;
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(10,12,10,0.88)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "1rem" }}>
-      <div style={{ background: "#111712", border: `1px solid ${accentColor}40`, borderRadius: "12px", width: "100%", maxWidth: "480px", maxHeight: "90vh", overflowY: "auto", padding: "1.5rem" }}>
+      <div style={{ background: "#111712", border: `1px solid ${accentColor}40`, borderRadius: "12px", width: "100%", maxWidth: "520px", maxHeight: "90vh", overflowY: "auto", padding: "1.5rem" }}>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: "0.75rem", fontFamily: "'Courier New', monospace", color: accentColor, fontWeight: "700", letterSpacing: "0.1em" }}>↑ BATCH CHECK-IN</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {inReview && (
+              <button onClick={() => setRows([])} style={{ background: "none", border: "none", color: "#556", cursor: "pointer", fontFamily: "'Courier New', monospace", fontSize: "0.65rem", letterSpacing: "0.05em", padding: 0 }}>← BACK</button>
+            )}
+            <div style={{ fontSize: "0.75rem", fontFamily: "'Courier New', monospace", color: accentColor, fontWeight: "700", letterSpacing: "0.1em" }}>
+              {inReview ? `REVIEW · ${rows.length} PLANT${rows.length !== 1 ? "S" : ""}` : "↑ BATCH CHECK-IN"}
+            </div>
+          </div>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#556", cursor: "pointer", fontSize: "1.2rem" }}>✕</button>
         </div>
 
-        <div style={{ fontSize: "0.65rem", color: "#556", fontFamily: "'Courier New', monospace", marginBottom: "1rem", lineHeight: "1.6" }}>
-          Select 1–12 plant photos. Images are compressed in-browser before upload.
-        </div>
-
-        <input ref={inputRef} type="file" accept="image/*" multiple onChange={onFileChange} style={{ display: "none" }} />
-
-        <button onClick={() => inputRef.current?.click()} disabled={compressing}
-          style={{ width: "100%", padding: "10px", background: "#0D100D", border: `1px solid ${accentColor}50`, borderRadius: "6px", color: accentColor, fontFamily: "'Courier New', monospace", fontSize: "0.7rem", letterSpacing: "0.1em", cursor: compressing ? "default" : "pointer", marginBottom: "1rem", opacity: compressing ? 0.6 : 1 }}>
-          {compressing ? "COMPRESSING..." : `SELECT PHOTOS${hasFiles ? ` (${processedFiles.length} SELECTED)` : ""}`}
-        </button>
-
-        {compressing && (
-          <div style={{ fontSize: "0.65rem", color: "#445", fontFamily: "'Courier New', monospace", textAlign: "center", padding: "8px 0 1rem" }}>
-            Resizing and encoding...
-          </div>
-        )}
-
-        {!compressing && hasFiles && (
-          <div style={{ background: "#0D100D", border: "1px solid #1a2a1a", borderRadius: "6px", padding: "10px", marginBottom: "1rem" }}>
-            <div style={{ fontSize: "0.6rem", color: "#445", fontFamily: "'Courier New', monospace", letterSpacing: "0.1em", marginBottom: "8px" }}>
-              {processedFiles.length} FILE{processedFiles.length !== 1 ? "S" : ""} READY
+        {/* ── Upload / file-select screen ── */}
+        {!inReview && (
+          <>
+            <div style={{ fontSize: "0.65rem", color: "#556", fontFamily: "'Courier New', monospace", marginBottom: "1rem", lineHeight: "1.6" }}>
+              Select 1–12 plant photos. Images are compressed in-browser before upload.
             </div>
-            {processedFiles.map((f, i) => (
-              <div key={i} style={{ padding: "5px 0", borderBottom: i < processedFiles.length - 1 ? "1px solid #1a2a1a" : "none" }}>
-                <div style={{ fontSize: "0.68rem", color: "#a8c4a0", fontFamily: "'Courier New', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
-                  {f.compressed ? (
-                    <>
-                      <span style={{ fontSize: "0.58rem", color: "#445", fontFamily: "'Courier New', monospace" }}>{(f.originalSize / 1024).toFixed(0)} KB</span>
-                      <span style={{ fontSize: "0.58rem", color: "#334" }}>→</span>
-                      <span style={{ fontSize: "0.58rem", color: "#5BAD72", fontFamily: "'Courier New', monospace" }}>{(f.compressedSize / 1024).toFixed(0)} KB</span>
-                      <span style={{ fontSize: "0.55rem", color: "#445", fontFamily: "'Courier New', monospace" }}>
-                        ({Math.round((1 - f.compressedSize / f.originalSize) * 100)}% smaller)
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span style={{ fontSize: "0.58rem", color: "#445", fontFamily: "'Courier New', monospace" }}>{(f.originalSize / 1024).toFixed(0)} KB</span>
-                      <span style={{ fontSize: "0.58rem", color: "#E8874A", fontFamily: "'Courier New', monospace" }}>[ORIG — not compressed]</span>
-                    </>
-                  )}
-                </div>
+
+            <input ref={inputRef} type="file" accept="image/*" multiple onChange={onFileChange} style={{ display: "none" }} />
+
+            <button onClick={() => inputRef.current?.click()} disabled={compressing}
+              style={{ width: "100%", padding: "10px", background: "#0D100D", border: `1px solid ${accentColor}50`, borderRadius: "6px", color: accentColor, fontFamily: "'Courier New', monospace", fontSize: "0.7rem", letterSpacing: "0.1em", cursor: compressing ? "default" : "pointer", marginBottom: "1rem", opacity: compressing ? 0.6 : 1 }}>
+              {compressing ? "COMPRESSING..." : `SELECT PHOTOS${hasFiles ? ` (${processedFiles.length} SELECTED)` : ""}`}
+            </button>
+
+            {compressing && (
+              <div style={{ fontSize: "0.65rem", color: "#445", fontFamily: "'Courier New', monospace", textAlign: "center", padding: "8px 0 1rem" }}>
+                Resizing and encoding...
               </div>
-            ))}
-          </div>
+            )}
+
+            {!compressing && hasFiles && (
+              <div style={{ background: "#0D100D", border: "1px solid #1a2a1a", borderRadius: "6px", padding: "10px", marginBottom: "1rem" }}>
+                <div style={{ fontSize: "0.6rem", color: "#445", fontFamily: "'Courier New', monospace", letterSpacing: "0.1em", marginBottom: "8px" }}>
+                  {processedFiles.length} FILE{processedFiles.length !== 1 ? "S" : ""} READY
+                </div>
+                {processedFiles.map((f, i) => (
+                  <div key={i} style={{ padding: "5px 0", borderBottom: i < processedFiles.length - 1 ? "1px solid #1a2a1a" : "none" }}>
+                    <div style={{ fontSize: "0.68rem", color: "#a8c4a0", fontFamily: "'Courier New', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+                      {f.compressed ? (
+                        <>
+                          <span style={{ fontSize: "0.58rem", color: "#445", fontFamily: "'Courier New', monospace" }}>{(f.originalSize / 1024).toFixed(0)} KB</span>
+                          <span style={{ fontSize: "0.58rem", color: "#334" }}>→</span>
+                          <span style={{ fontSize: "0.58rem", color: "#5BAD72", fontFamily: "'Courier New', monospace" }}>{(f.compressedSize / 1024).toFixed(0)} KB</span>
+                          <span style={{ fontSize: "0.55rem", color: "#445", fontFamily: "'Courier New', monospace" }}>
+                            ({Math.round((1 - f.compressedSize / f.originalSize) * 100)}% smaller)
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: "0.58rem", color: "#445", fontFamily: "'Courier New', monospace" }}>{(f.originalSize / 1024).toFixed(0)} KB</span>
+                          <span style={{ fontSize: "0.58rem", color: "#E8874A", fontFamily: "'Courier New', monospace" }}>[ORIG — not compressed]</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button onClick={analyze} disabled={!isReady || loading}
+              style={{ width: "100%", padding: "12px", background: isReady ? accentColor : "#1a2a1a", border: "none", borderRadius: "6px", color: isReady ? "#0D100D" : "#334", fontFamily: "'Courier New', monospace", fontSize: "0.78rem", fontWeight: "700", letterSpacing: "0.1em", cursor: isReady ? "pointer" : "default", marginBottom: "1rem", opacity: loading ? 0.7 : 1 }}>
+              {loading ? "ANALYZING..." : "→ ANALYZE"}
+            </button>
+          </>
         )}
 
-        <button onClick={analyze} disabled={!isReady || loading}
-          style={{ width: "100%", padding: "12px", background: isReady ? accentColor : "#1a2a1a", border: "none", borderRadius: "6px", color: isReady ? "#0D100D" : "#334", fontFamily: "'Courier New', monospace", fontSize: "0.78rem", fontWeight: "700", letterSpacing: "0.1em", cursor: isReady ? "pointer" : "default", marginBottom: "1rem", opacity: loading ? 0.7 : 1 }}>
-          {loading ? "SENDING..." : "→ ANALYZE"}
-        </button>
+        {/* ── Review screen ── */}
+        {inReview && (
+          <>
+            <div style={{ fontSize: "0.6rem", color: "#445", fontFamily: "'Courier New', monospace", marginBottom: "1rem", lineHeight: "1.6" }}>
+              Review and edit AI-detected values before saving to Notion.
+            </div>
+
+            {rows.map((row, i) => {
+              const lowConf = row.confidence < 0.7;
+              return (
+                <div key={i} style={{ background: "#0D100D", border: `1px solid ${lowConf ? "#E8914A40" : "#1e2e1e"}`, borderRadius: "8px", padding: "12px", marginBottom: "10px" }}>
+
+                  {/* Row header */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "0.78rem", color: accentColor, fontFamily: "'Courier New', monospace", fontWeight: "700" }}>
+                        [{row.plantTag ?? "UNKNOWN"}]
+                      </span>
+                      {lowConf && (
+                        <span style={{ fontSize: "0.58rem", color: "#E8914A", fontFamily: "'Courier New', monospace", letterSpacing: "0.05em" }}>⚠ LOW CONF</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: "0.58rem", color: "#445", fontFamily: "'Courier New', monospace", textAlign: "right" }}>
+                      {row.photoCount} PHOTO{row.photoCount !== 1 ? "S" : ""} · CONF {row.confidence?.toFixed(2) ?? "—"}
+                    </div>
+                  </div>
+
+                  {/* Fields grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+                    <div>
+                      <label style={LABEL_STYLE}>HEIGHT (IN)</label>
+                      <input type="number" value={row.height} onChange={e => updateRow(i, "height", e.target.value)}
+                        style={INPUT_STYLE} min="0" step="0.5" />
+                    </div>
+                    <div>
+                      <label style={LABEL_STYLE}>HEALTH</label>
+                      <select value={row.health} onChange={e => updateRow(i, "health", e.target.value)} style={SELECT_STYLE}>
+                        {HEALTH_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: "8px" }}>
+                    <label style={LABEL_STYLE}>COLOR</label>
+                    <select value={row.color} onChange={e => updateRow(i, "color", e.target.value)} style={SELECT_STYLE}>
+                      <option>Light Green</option>
+                      <option>Green</option>
+                      <option>Dark Green</option>
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: "8px" }}>
+                    <label style={LABEL_STYLE}>CONCERNS</label>
+                    <input type="text" value={row.concerns} onChange={e => updateRow(i, "concerns", e.target.value)}
+                      placeholder="none" style={INPUT_STYLE} />
+                  </div>
+
+                  <div>
+                    <label style={LABEL_STYLE}>NOTES</label>
+                    <input type="text" value={row.notes} onChange={e => updateRow(i, "notes", e.target.value)}
+                      placeholder="optional" style={INPUT_STYLE} />
+                  </div>
+                </div>
+              );
+            })}
+
+            <button onClick={saveAll} disabled={saving}
+              style={{ width: "100%", padding: "12px", background: saving ? "#1a2a1a" : accentColor, border: "none", borderRadius: "6px", color: saving ? "#334" : "#0D100D", fontFamily: "'Courier New', monospace", fontSize: "0.78rem", fontWeight: "700", letterSpacing: "0.1em", cursor: saving ? "default" : "pointer", marginTop: "4px" }}>
+              {saving ? "SAVING..." : `SAVE ALL (${rows.filter(r => r.plantTag).length} ENTRIES)`}
+            </button>
+
+            {rows.some(r => !r.plantTag) && (
+              <div style={{ fontSize: "0.58rem", color: "#556", fontFamily: "'Courier New', monospace", textAlign: "center", marginTop: "6px" }}>
+                {rows.filter(r => !r.plantTag).length} unidentified row{rows.filter(r => !r.plantTag).length !== 1 ? "s" : ""} will be skipped
+              </div>
+            )}
+          </>
+        )}
 
         {error && (
-          <div style={{ background: "#1a0D0D", border: "1px solid #E8614A40", borderRadius: "6px", padding: "10px", fontSize: "0.68rem", color: "#E8614A", fontFamily: "'Courier New', monospace" }}>
+          <div style={{ background: "#1a0D0D", border: "1px solid #E8614A40", borderRadius: "6px", padding: "10px", fontSize: "0.68rem", color: "#E8614A", fontFamily: "'Courier New', monospace", marginTop: "1rem" }}>
             ERROR: {error}
-          </div>
-        )}
-
-        {result && (
-          <div style={{ background: "#0D100D", border: `1px solid ${accentColor}30`, borderRadius: "6px", padding: "12px" }}>
-            <div style={{ fontSize: "0.6rem", color: "#445", fontFamily: "'Courier New', monospace", letterSpacing: "0.1em", marginBottom: "8px" }}>SERVER RESPONSE</div>
-            <div style={{ fontSize: "0.8rem", color: accentColor, fontFamily: "'Courier New', monospace", fontWeight: "700", marginBottom: "8px" }}>
-              RECEIVED: {result.received} FILE{result.received !== 1 ? "S" : ""}
-            </div>
-            {result.files?.map((f, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
-                <div style={{ fontSize: "0.65rem", color: "#8aaa86", fontFamily: "'Courier New', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "75%" }}>{f.name}</div>
-                <div style={{ fontSize: "0.6rem", color: "#445", fontFamily: "'Courier New', monospace", flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB</div>
-              </div>
-            ))}
           </div>
         )}
       </div>
@@ -554,6 +681,13 @@ export default function GrowTracker() {
   const [winterChecklist, setWinterChecklist] = useState(WINTER_CHECKLIST_INIT);
   const [winterNotes, setWinterNotes] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const fetchLogs = () => {
+    fetch("/api/logs")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length > 0) setLogs(data); })
+      .catch(() => {});
+  };
 
   useEffect(() => {
     fetch("/api/grows")
@@ -581,10 +715,7 @@ export default function GrowTracker() {
       })
       .catch(() => {});
 
-    fetch("/api/logs")
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data) && data.length > 0) setLogs(data); })
-      .catch(() => {});
+    fetchLogs();
   }, []);
 
   // Merge Notion grow data with hardcoded season/context
@@ -755,7 +886,7 @@ export default function GrowTracker() {
       </div>
 
       {checkingIn && <CheckInForm plant={checkingIn} grow={grow} onSave={handleSave} onClose={() => setCheckingIn(null)} />}
-      {batchOpen && <BatchUploadPanel accentColor={grow.accentColor} onClose={() => setBatchOpen(false)} />}
+      {batchOpen && <BatchUploadPanel accentColor={grow.accentColor} grow={grow} onBatchSaved={fetchLogs} onClose={() => setBatchOpen(false)} />}
       {dropdownOpen && <div onClick={() => setDropdownOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />}
     </div>
   );
