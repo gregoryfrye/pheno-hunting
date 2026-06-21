@@ -111,16 +111,50 @@ const GROWS = {
 };
 */
 
-const HEALTH_OPTIONS = ["Excellent", "Good", "Fair", "Poor", "Critical"];
-const HEALTH_COLORS = { Excellent: "#5BAD72", Good: "#A8C56A", Fair: "#E8C14A", Poor: "#E8914A", Critical: "#E8414A" };
+const COLOR_OPTIONS   = ["White Spots","Dark Green","Green","Light Green","Yellow","Light Yellow","Yellow Spots","Brown"];
+const HEALTH_OPTIONS  = ["Excellent","Good","Fair","Poor","Critical"];
+const CONCERN_OPTIONS = ["None","Signs of pests","Tag illegible","Stretching tall","Skinny stems","Condensed structure","Sparse foliage","Leaf droop","Leaf yellowing","Leaf loss"];
+const CTA_OPTIONS     = ["Defoliate","Feed","Clone","Water","Harvest","Top","Train","Monitor","Hold","Repot"];
+const HEALTH_COLORS   = { Excellent: "#5BAD72", Good: "#A8C56A", Fair: "#E8C14A", Poor: "#E8914A", Critical: "#E8414A" };
 
-function CheckInForm({ plant, grow, onSave, onClose }) {
-  const [form, setForm] = useState({ height: "", watering: "", health: "Good", leafColor: "", issues: "", notes: "" });
+function TagPicker({ options, selected, onToggle, accentColor }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+      {options.map(opt => {
+        const active = selected.includes(opt);
+        return (
+          <button key={opt} onClick={() => onToggle(opt)}
+            style={{ padding: "4px 8px", borderRadius: "4px", border: `1px solid ${active ? (accentColor || "#5BAD72") : "#2a3a2a"}`, background: active ? `${accentColor || "#5BAD72"}20` : "transparent", color: active ? (accentColor || "#5BAD72") : "#556", fontSize: "0.62rem", fontFamily: "'Courier New', monospace", cursor: "pointer", letterSpacing: "0.04em" }}>
+            {opt}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CheckInForm({ plant, grow, logCount, onSave, onClose }) {
+  const today = new Date().toISOString().split("T")[0];
+  const autoName = `${String((logCount ?? 0) + 1).padStart(3, "0")}-${plant.name}`;
+  const [form, setForm] = useState({ name: autoName, date: today, height: "", watering: "", color: "Green", health: "Good", concerns: [], cta: [], notes: "" });
   const [aiAdvice, setAiAdvice] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
+
+  const toggleConcern = (opt) => {
+    set("concerns", form.concerns.includes(opt)
+      ? form.concerns.filter(c => c !== opt)
+      : [...form.concerns.filter(c => c !== "None"), ...(opt === "None" ? [] : []), opt === "None" ? "None" : opt].filter((v, i, a) => a.indexOf(v) === i)
+    );
+  };
+
+  const toggleCta = (opt) => {
+    set("cta", form.cta.includes(opt) ? form.cta.filter(c => c !== opt) : [...form.cta, opt]);
+  };
+
   const getAiAdvice = async () => {
-    if (!form.height && !form.notes && !form.issues) return;
+    if (!form.height && !form.notes && !form.concerns.length) return;
     setLoading(true);
     try {
       const prompt = `You are a knowledgeable cannabis cultivation advisor. A grower is doing a weekly check-in on their outdoor plant in Kingston, NY. It's currently June (vegging phase). The plant is in a 7-gallon fabric pot on a deck, using Stonington Blend Coast of Maine soil.
@@ -128,8 +162,8 @@ function CheckInForm({ plant, grow, onSave, onClose }) {
 Plant: ${plant.name} — ${plant.type} (${plant.genetics})
 Height: ${form.height || "not recorded"}
 Health rating: ${form.health}
-Leaf color: ${form.leafColor || "not noted"}
-Issues observed: ${form.issues || "none noted"}
+Leaf color: ${form.color || "not noted"}
+Issues observed: ${form.concerns.join(", ") || "none noted"}
 Grower notes: ${form.notes || "none"}
 
 Give 2-3 specific, actionable observations or recommendations for this plant right now. Be direct and practical. Keep it under 100 words.`;
@@ -145,6 +179,9 @@ Give 2-3 specific, actionable observations or recommendations for this plant rig
     setLoading(false);
   };
 
+  const fieldStyle = { width: "100%", background: "#0D100D", border: "1px solid #2a3a2a", borderRadius: "6px", color: "#c8d8c4", fontFamily: "'Courier New', monospace", fontSize: "0.8rem", padding: "8px", boxSizing: "border-box" };
+  const labelStyle = { fontSize: "0.65rem", letterSpacing: "0.1em", color: "#667", fontFamily: "'Courier New', monospace", marginBottom: "4px", display: "block" };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(10,12,10,0.88)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: "1rem" }}>
       <div style={{ background: "#111712", border: `1px solid ${plant.color}40`, borderRadius: "12px", width: "100%", maxWidth: "480px", maxHeight: "90vh", overflowY: "auto", padding: "1.5rem" }}>
@@ -156,35 +193,68 @@ Give 2-3 specific, actionable observations or recommendations for this plant rig
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#556", cursor: "pointer", fontSize: "1.2rem" }}>✕</button>
         </div>
 
-        {[
-          { label: "HEIGHT (inches)", key: "height", placeholder: "e.g. 14" },
-          { label: "WATERINGS SINCE LAST CHECK", key: "watering", placeholder: "e.g. 3" },
-          { label: "LEAF COLOR", key: "leafColor", placeholder: "e.g. Deep green, slight yellowing lower" },
-          { label: "ISSUES OBSERVED", key: "issues", placeholder: "e.g. None / spider mite on lower fan leaf" },
-          { label: "NOTES", key: "notes", placeholder: "Anything else worth capturing..." },
-        ].map(field => (
-          <div key={field.key} style={{ marginBottom: "1rem" }}>
-            <div style={{ fontSize: "0.65rem", letterSpacing: "0.1em", color: "#667", fontFamily: "'Courier New', monospace", marginBottom: "4px" }}>{field.label}</div>
-            {field.key === "notes" || field.key === "issues" ? (
-              <textarea value={form[field.key]} onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))} placeholder={field.placeholder} rows={2}
-                style={{ width: "100%", background: "#0D100D", border: "1px solid #2a3a2a", borderRadius: "6px", color: "#c8d8c4", fontFamily: "'Courier New', monospace", fontSize: "0.8rem", padding: "8px", resize: "none", boxSizing: "border-box" }} />
-            ) : (
-              <input value={form[field.key]} onChange={e => setForm(f => ({ ...f, [field.key]: e.target.value }))} placeholder={field.placeholder}
-                style={{ width: "100%", background: "#0D100D", border: "1px solid #2a3a2a", borderRadius: "6px", color: "#c8d8c4", fontFamily: "'Courier New', monospace", fontSize: "0.8rem", padding: "8px", boxSizing: "border-box" }} />
-            )}
-          </div>
-        ))}
+        {/* Name */}
+        <div style={{ marginBottom: "1rem" }}>
+          <label style={labelStyle}>NAME</label>
+          <input value={form.name} onChange={e => set("name", e.target.value)} style={fieldStyle} />
+        </div>
 
+        {/* Date */}
+        <div style={{ marginBottom: "1rem" }}>
+          <label style={labelStyle}>DATE</label>
+          <input type="date" value={form.date} onChange={e => set("date", e.target.value)} style={fieldStyle} />
+        </div>
+
+        {/* Height + Waterings */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "1rem" }}>
+          <div>
+            <label style={labelStyle}>HEIGHT (IN)</label>
+            <input type="number" value={form.height} onChange={e => set("height", e.target.value)} placeholder="e.g. 14" min="0" step="0.5" style={fieldStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>WATERINGS</label>
+            <input type="number" value={form.watering} onChange={e => set("watering", e.target.value)} placeholder="e.g. 3" min="0" style={fieldStyle} />
+          </div>
+        </div>
+
+        {/* Color */}
+        <div style={{ marginBottom: "1rem" }}>
+          <label style={labelStyle}>COLOR</label>
+          <select value={form.color} onChange={e => set("color", e.target.value)} style={fieldStyle}>
+            {COLOR_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+
+        {/* Health */}
         <div style={{ marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: "0.65rem", letterSpacing: "0.1em", color: "#667", fontFamily: "'Courier New', monospace", marginBottom: "6px" }}>OVERALL HEALTH</div>
+          <label style={labelStyle}>HEALTH</label>
           <div style={{ display: "flex", gap: "6px" }}>
             {HEALTH_OPTIONS.map(h => (
-              <button key={h} onClick={() => setForm(f => ({ ...f, health: h }))}
+              <button key={h} onClick={() => set("health", h)}
                 style={{ flex: 1, padding: "6px 4px", borderRadius: "6px", border: `1px solid ${form.health === h ? HEALTH_COLORS[h] : "#2a3a2a"}`, background: form.health === h ? `${HEALTH_COLORS[h]}20` : "transparent", color: form.health === h ? HEALTH_COLORS[h] : "#556", fontSize: "0.65rem", fontFamily: "'Courier New', monospace", cursor: "pointer", letterSpacing: "0.05em" }}>
                 {h}
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Concern */}
+        <div style={{ marginBottom: "1rem" }}>
+          <label style={labelStyle}>CONCERN</label>
+          <TagPicker options={CONCERN_OPTIONS} selected={form.concerns} onToggle={toggleConcern} accentColor={plant.color} />
+        </div>
+
+        {/* CTA */}
+        <div style={{ marginBottom: "1rem" }}>
+          <label style={labelStyle}>CTA</label>
+          <TagPicker options={CTA_OPTIONS} selected={form.cta} onToggle={toggleCta} accentColor={plant.color} />
+        </div>
+
+        {/* Notes */}
+        <div style={{ marginBottom: "1rem" }}>
+          <label style={labelStyle}>NOTES</label>
+          <textarea value={form.notes} onChange={e => set("notes", e.target.value)} placeholder="Anything else worth capturing..." rows={2}
+            style={{ ...fieldStyle, resize: "none" }} />
         </div>
 
         <button onClick={getAiAdvice} disabled={loading}
@@ -199,7 +269,7 @@ Give 2-3 specific, actionable observations or recommendations for this plant rig
           </div>
         )}
 
-        <button onClick={() => onSave({ ...form, plantId: plant.id, plantName: plant.name, growId: grow.notionId, savedAt: new Date().toISOString() })}
+        <button onClick={() => onSave({ ...form, leafColor: form.color, plantId: plant.id, plantName: plant.name, growId: grow.notionId, savedAt: new Date().toISOString() })}
           style={{ width: "100%", padding: "12px", background: plant.color, border: "none", borderRadius: "6px", color: "#0D100D", fontFamily: "'Courier New', monospace", fontSize: "0.8rem", fontWeight: "700", letterSpacing: "0.1em", cursor: "pointer" }}>
           SAVE CHECK-IN
         </button>
@@ -420,7 +490,7 @@ const INPUT_STYLE = { width: "100%", background: "#0A0C0A", border: "1px solid #
 const SELECT_STYLE = { ...INPUT_STYLE, cursor: "pointer" };
 const LABEL_STYLE = { fontSize: "0.55rem", color: "#445", fontFamily: "'Courier New', monospace", letterSpacing: "0.1em", marginBottom: "3px", display: "block" };
 
-function BatchUploadPanel({ accentColor, grow, onBatchSaved, onClose }) {
+function BatchUploadPanel({ accentColor, grow, plants, logs, onBatchSaved, onClose }) {
   const inputRef = useRef(null);
   const [processedFiles, setProcessedFiles] = useState([]);
   const [compressing, setCompressing] = useState(false);
@@ -455,16 +525,26 @@ function BatchUploadPanel({ accentColor, grow, onBatchSaved, onClose }) {
       const res = await fetch("/api/batch-analyze", { method: "POST", body: fd });
       const json = await res.json();
       if (json.error) throw new Error(json.error);
-      setRows((json.plants ?? []).map(p => ({
-        plantTag:   p.plantTag,
-        height:     p.heightInches != null ? String(p.heightInches) : "",
-        color:      p.color ?? "Green",
-        health:     p.health ?? "Good",
-        concerns:   (p.concerns ?? []).join(", "),
-        notes:      "",
-        photoCount: p.photoCount,
-        confidence: p.confidence,
-      })));
+      const today = new Date().toISOString().split("T")[0];
+      setRows((json.plants ?? []).map(p => {
+        const plantId   = p.plantTag?.toLowerCase() ?? null;
+        const logCount  = plantId ? (logs ?? []).filter(l => l.plantId === plantId).length : 0;
+        const autoName  = p.plantTag ? `${String(logCount + 1).padStart(3, "0")}-${p.plantTag}` : "";
+        return {
+          plantTag:   p.plantTag,
+          name:       autoName,
+          date:       today,
+          height:     p.heightInches != null ? String(p.heightInches) : "",
+          watering:   "",
+          color:      p.color ?? "Green",
+          health:     p.health ?? "Good",
+          concerns:   p.concerns ?? [],
+          cta:        p.cta ?? [],
+          notes:      p.notes ?? "",
+          photoCount: p.photoCount,
+          confidence: p.confidence,
+        };
+      }));
     } catch (e) {
       setError(e.message || "Analysis failed");
     }
@@ -485,13 +565,18 @@ function BatchUploadPanel({ accentColor, grow, onBatchSaved, onClose }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            name:      r.name,
+            date:      r.date,
             plantName: r.plantTag,
             plantId:   r.plantTag.toLowerCase(),
             growId:    grow?.notionId,
             height:    r.height,
+            watering:  r.watering,
             health:    r.health,
             leafColor: r.color,
-            notes:     [r.concerns, r.notes].filter(Boolean).join(" — "),
+            concerns:  r.concerns,
+            cta:       r.cta,
+            notes:     r.notes,
             savedAt:   new Date().toISOString(),
           }),
         })
@@ -596,9 +681,14 @@ function BatchUploadPanel({ accentColor, grow, onBatchSaved, onClose }) {
                   {/* Row header */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "0.78rem", color: accentColor, fontFamily: "'Courier New', monospace", fontWeight: "700" }}>
-                        [{row.plantTag ?? "UNKNOWN"}]
-                      </span>
+                      <select
+                        value={row.plantTag ?? ""}
+                        onChange={e => updateRow(i, "plantTag", e.target.value || null)}
+                        style={{ ...SELECT_STYLE, width: "auto", fontWeight: "700", color: accentColor, fontSize: "0.75rem" }}
+                      >
+                        <option value="">— select plant —</option>
+                        {(plants ?? []).map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                      </select>
                       {lowConf && (
                         <span style={{ fontSize: "0.58rem", color: "#E8914A", fontFamily: "'Courier New', monospace", letterSpacing: "0.05em" }}>⚠ LOW CONF</span>
                       )}
@@ -608,12 +698,39 @@ function BatchUploadPanel({ accentColor, grow, onBatchSaved, onClose }) {
                     </div>
                   </div>
 
-                  {/* Fields grid */}
+                  {/* Name + Date */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+                    <div>
+                      <label style={LABEL_STYLE}>NAME</label>
+                      <input value={row.name} onChange={e => updateRow(i, "name", e.target.value)} style={INPUT_STYLE} />
+                    </div>
+                    <div>
+                      <label style={LABEL_STYLE}>DATE</label>
+                      <input type="date" value={row.date} onChange={e => updateRow(i, "date", e.target.value)} style={INPUT_STYLE} />
+                    </div>
+                  </div>
+
+                  {/* Height + Waterings */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
                     <div>
                       <label style={LABEL_STYLE}>HEIGHT (IN)</label>
                       <input type="number" value={row.height} onChange={e => updateRow(i, "height", e.target.value)}
                         style={INPUT_STYLE} min="0" step="0.5" />
+                    </div>
+                    <div>
+                      <label style={LABEL_STYLE}>WATERINGS</label>
+                      <input type="number" value={row.watering} onChange={e => updateRow(i, "watering", e.target.value)}
+                        style={INPUT_STYLE} min="0" />
+                    </div>
+                  </div>
+
+                  {/* Color + Health */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+                    <div>
+                      <label style={LABEL_STYLE}>COLOR</label>
+                      <select value={row.color} onChange={e => updateRow(i, "color", e.target.value)} style={SELECT_STYLE}>
+                        {COLOR_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
                     </div>
                     <div>
                       <label style={LABEL_STYLE}>HEALTH</label>
@@ -623,21 +740,23 @@ function BatchUploadPanel({ accentColor, grow, onBatchSaved, onClose }) {
                     </div>
                   </div>
 
+                  {/* Concern tags */}
                   <div style={{ marginBottom: "8px" }}>
-                    <label style={LABEL_STYLE}>COLOR</label>
-                    <select value={row.color} onChange={e => updateRow(i, "color", e.target.value)} style={SELECT_STYLE}>
-                      <option>Light Green</option>
-                      <option>Green</option>
-                      <option>Dark Green</option>
-                    </select>
+                    <label style={LABEL_STYLE}>CONCERN</label>
+                    <TagPicker options={CONCERN_OPTIONS} selected={row.concerns}
+                      onToggle={opt => updateRow(i, "concerns", row.concerns.includes(opt) ? row.concerns.filter(c => c !== opt) : [...row.concerns.filter(c => c !== "None"), opt === "None" ? "None" : opt].filter((v, vi, a) => a.indexOf(v) === vi))}
+                      accentColor={accentColor} />
                   </div>
 
+                  {/* CTA tags */}
                   <div style={{ marginBottom: "8px" }}>
-                    <label style={LABEL_STYLE}>CONCERNS</label>
-                    <input type="text" value={row.concerns} onChange={e => updateRow(i, "concerns", e.target.value)}
-                      placeholder="none" style={INPUT_STYLE} />
+                    <label style={LABEL_STYLE}>CTA</label>
+                    <TagPicker options={CTA_OPTIONS} selected={row.cta}
+                      onToggle={opt => updateRow(i, "cta", row.cta.includes(opt) ? row.cta.filter(c => c !== opt) : [...row.cta, opt])}
+                      accentColor={accentColor} />
                   </div>
 
+                  {/* Notes */}
                   <div>
                     <label style={LABEL_STYLE}>NOTES</label>
                     <input type="text" value={row.notes} onChange={e => updateRow(i, "notes", e.target.value)}
@@ -885,8 +1004,8 @@ export default function GrowTracker() {
         )}
       </div>
 
-      {checkingIn && <CheckInForm plant={checkingIn} grow={grow} onSave={handleSave} onClose={() => setCheckingIn(null)} />}
-      {batchOpen && <BatchUploadPanel accentColor={grow.accentColor} grow={grow} onBatchSaved={fetchLogs} onClose={() => setBatchOpen(false)} />}
+      {checkingIn && <CheckInForm plant={checkingIn} grow={grow} logCount={logs.filter(l => l.plantId === checkingIn.id).length} onSave={handleSave} onClose={() => setCheckingIn(null)} />}
+      {batchOpen && <BatchUploadPanel accentColor={grow.accentColor} grow={grow} plants={growPlants} logs={logs} onBatchSaved={fetchLogs} onClose={() => setBatchOpen(false)} />}
       {dropdownOpen && <div onClick={() => setDropdownOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />}
     </div>
   );

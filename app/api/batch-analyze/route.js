@@ -3,8 +3,10 @@ import { getPlants } from "@/lib/grow-notion.js";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const HEALTH_VALUES = ["Excellent", "Good", "Fair", "Poor", "Critical"];
-const COLOR_VALUES  = ["Light Green", "Green", "Dark Green"];
+const HEALTH_VALUES  = ["Excellent", "Good", "Fair", "Poor", "Critical"];
+const COLOR_VALUES   = ["White Spots", "Dark Green", "Green", "Light Green", "Yellow", "Light Yellow", "Yellow Spots", "Brown"];
+const CONCERN_VALUES = ["None", "Signs of pests", "Tag illegible", "Stretching tall", "Skinny stems", "Condensed structure", "Sparse foliage", "Leaf droop", "Leaf yellowing", "Leaf loss"];
+const CTA_VALUES     = ["Defoliate", "Feed", "Clone", "Water", "Harvest", "Top", "Train", "Monitor", "Hold", "Repot"];
 
 function median(arr) {
   if (!arr.length) return null;
@@ -32,24 +34,29 @@ async function analyzeImage(file, plantNames) {
     const mimeType = file.type || "image/jpeg";
 
     const prompt = `You are analyzing a photo of a cannabis plant in a grow operation.
-Valid plant tags — use exactly one of these or null if you cannot identify the plant: ${plantNames.join(", ")}
-Color must be exactly one of: ${COLOR_VALUES.join(", ")}
-Health must be exactly one of: ${HEALTH_VALUES.join(", ")}
+
+Valid plant tags — use exactly one or null if unidentifiable: ${plantNames.join(", ")}
+Color — use exactly one: ${COLOR_VALUES.join(", ")}
+Health — use exactly one: ${HEALTH_VALUES.join(", ")}
+Concerns — use zero or more from this list (empty array if none): ${CONCERN_VALUES.filter(v => v !== "None").join(", ")}
+CTA — suggest zero or more actions from this list: ${CTA_VALUES.join(", ")}
 
 Reply with ONLY valid JSON, no markdown fences, no extra text:
-{"plantTag":null,"heightInches":null,"color":"Green","health":"Good","concern":null,"confidence":0.8}
+{"plantTag":null,"heightInches":null,"color":"Green","health":"Good","concerns":[],"cta":[],"notes":null,"confidence":0.8}
 
 Fields:
-- plantTag: one of the valid tags above, or null
+- plantTag: one valid tag or null
 - heightInches: estimated plant height as a number, or null
-- color: one of the three valid color values above
-- health: one of the five valid health values above
-- concern: a short string describing any issue, or null if none
-- confidence: your confidence in this assessment, 0–1`;
+- color: exactly one value from the Color list
+- health: exactly one value from the Health list
+- concerns: array of zero or more values from the Concerns list
+- cta: array of zero or more values from the CTA list
+- notes: one sentence of prose observations, or null
+- confidence: your overall confidence 0–1`;
 
     const response = await anthropic.messages.create({
       model: "claude-opus-4-8",
-      max_tokens: 256,
+      max_tokens: 400,
       messages: [
         {
           role: "user",
@@ -61,15 +68,24 @@ Fields:
       ],
     });
 
-    const raw = response.content[0]?.text ?? "";
+    const raw    = response.content[0]?.text ?? "";
     const parsed = JSON.parse(raw.trim());
+
+    const concerns = Array.isArray(parsed.concerns)
+      ? parsed.concerns.filter(c => CONCERN_VALUES.includes(c) && c !== "None")
+      : [];
+    const cta = Array.isArray(parsed.cta)
+      ? parsed.cta.filter(c => CTA_VALUES.includes(c))
+      : [];
 
     return {
       plantTag:     plantNames.includes(parsed.plantTag) ? parsed.plantTag : null,
       heightInches: typeof parsed.heightInches === "number" ? parsed.heightInches : null,
-      color:        COLOR_VALUES.includes(parsed.color)   ? parsed.color   : "Green",
-      health:       HEALTH_VALUES.includes(parsed.health) ? parsed.health  : "Good",
-      concern:      typeof parsed.concern === "string" && parsed.concern ? parsed.concern : null,
+      color:        COLOR_VALUES.includes(parsed.color)    ? parsed.color    : "Green",
+      health:       HEALTH_VALUES.includes(parsed.health)  ? parsed.health   : "Good",
+      concerns,
+      cta,
+      notes:        typeof parsed.notes === "string" && parsed.notes ? parsed.notes : null,
       confidence:   typeof parsed.confidence === "number" ? parsed.confidence : 0,
     };
   } catch (e) {
@@ -92,7 +108,9 @@ function groupByPlant(analyses) {
     heightInches: median(items.map(i => i.heightInches).filter(h => h != null)),
     color:        mostCommon(items.map(i => i.color)),
     health:       mostCommon(items.map(i => i.health)),
-    concerns:     [...new Set(items.map(i => i.concern).filter(Boolean))],
+    concerns:     [...new Set(items.flatMap(i => i.concerns))],
+    cta:          [...new Set(items.flatMap(i => i.cta))],
+    notes:        items.map(i => i.notes).filter(Boolean).join(" "),
     confidence:   Math.round(avg(items.map(i => i.confidence)) * 100) / 100,
   }));
 }
