@@ -937,14 +937,10 @@ export default function GrowTracker() {
               {v === "plants" ? "PLANTS" : `LOG (${growLogs.length})`}
             </button>
           ))}
-          <button onClick={() => setBatchOpen(true)}
-            style={{ padding: "10px 14px", background: "none", border: "none", borderBottom: "2px solid transparent", borderLeft: "1px solid #1a2a1a", color: "#445", fontFamily: "'Courier New', monospace", fontSize: "0.65rem", letterSpacing: "0.1em", cursor: "pointer", whiteSpace: "nowrap" }}>
-            ↑ BATCH
-          </button>
         </div>
       )}
 
-      <div style={{ padding: "1rem" }}>
+      <div style={{ padding: "1rem", paddingBottom: "80px" }}>
         {isPlanning && (
           <WinterPlanning grow={grow} plants={growPlants} checklist={winterChecklist} onToggle={toggleChecklist} notes={winterNotes} onNotesChange={setWinterNotes} />
         )}
@@ -1003,6 +999,13 @@ export default function GrowTracker() {
           </div>
         )}
       </div>
+
+      {!batchOpen && !checkingIn && (
+        <button onClick={() => setBatchOpen(true)}
+          style={{ position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)", zIndex: 50, padding: "11px 28px", background: grow.accentColor, border: "none", borderRadius: "999px", color: "#0D100D", fontFamily: "'Courier New', monospace", fontSize: "0.72rem", fontWeight: "700", letterSpacing: "0.12em", cursor: "pointer", whiteSpace: "nowrap", boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+          ↑ BATCH
+        </button>
+      )}
 
       {checkingIn && <CheckInForm plant={checkingIn} grow={grow} logCount={logs.filter(l => l.plantId === checkingIn.id).length} onSave={handleSave} onClose={() => setCheckingIn(null)} />}
       {batchOpen && <BatchUploadPanel accentColor={grow.accentColor} grow={grow} plants={growPlants} logs={logs} onBatchSaved={fetchLogs} onClose={() => setBatchOpen(false)} />}
