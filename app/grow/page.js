@@ -486,6 +486,50 @@ async function compressImage(file) {
   });
 }
 
+function StrainCard({ strain, linkedPlants, accentColor }) {
+  return (
+    <div style={{ background: "#0D100D", border: "1px solid #1a2a1a", borderRadius: "10px", padding: "1rem", position: "relative", overflow: "hidden", marginBottom: "10px" }}>
+      <div style={{ position: "absolute", top: 0, left: 0, width: "3px", height: "100%", background: accentColor, borderRadius: "3px 0 0 3px", opacity: 0.6 }} />
+      <div style={{ paddingLeft: "8px" }}>
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
+          <div style={{ fontFamily: "'Courier New', monospace", fontSize: "0.88rem", color: accentColor, fontWeight: "700", letterSpacing: "0.04em" }}>
+            {strain.name}
+          </div>
+          <div style={{ display: "flex", gap: "5px", flexShrink: 0, marginLeft: "8px" }}>
+            {strain.type && (
+              <span style={{ fontSize: "0.58rem", fontFamily: "'Courier New', monospace", color: "#445", border: "1px solid #1e2e1e", borderRadius: "3px", padding: "1px 5px", letterSpacing: "0.05em" }}>{strain.type}</span>
+            )}
+            {strain.category && (
+              <span style={{ fontSize: "0.58rem", fontFamily: "'Courier New', monospace", color: "#445", border: "1px solid #1e2e1e", borderRadius: "3px", padding: "1px 5px", letterSpacing: "0.05em" }}>{strain.category}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Genetics */}
+        {strain.genetics && (
+          <div style={{ fontSize: "0.7rem", color: "#8aaa86", fontFamily: "'Courier New', monospace", marginBottom: "4px", lineHeight: "1.4" }}>{strain.genetics}</div>
+        )}
+
+        {/* Ratio */}
+        {strain.ratio && (
+          <div style={{ fontSize: "0.62rem", color: "#556", fontFamily: "'Courier New', monospace", marginBottom: "8px", letterSpacing: "0.03em" }}>{strain.ratio}</div>
+        )}
+
+        {/* Linked plants */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginTop: strain.genetics || strain.ratio ? "0" : "4px" }}>
+          {linkedPlants.map(p => (
+            <span key={p.id} style={{ fontSize: "0.62rem", fontFamily: "'Courier New', monospace", color: "#8aaa86", background: "#111712", border: "1px solid #1e2e1e", borderRadius: "4px", padding: "2px 7px" }}>
+              {p.emoji} {p.name}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const INPUT_STYLE = { width: "100%", background: "#0A0C0A", border: "1px solid #1e2e1e", borderRadius: "4px", color: "#a8c4a0", fontFamily: "'Courier New', monospace", fontSize: "0.7rem", padding: "6px 8px", boxSizing: "border-box" };
 const SELECT_STYLE = { ...INPUT_STYLE, cursor: "pointer" };
 const LABEL_STYLE = { fontSize: "0.55rem", color: "#445", fontFamily: "'Courier New', monospace", letterSpacing: "0.1em", marginBottom: "3px", display: "block" };
@@ -792,6 +836,7 @@ function BatchUploadPanel({ accentColor, grow, plants, logs, onBatchSaved, onClo
 export default function GrowTracker() {
   const [grows, setGrows] = useState([]);
   const [plants, setPlants] = useState([]);
+  const [strains, setStrains] = useState([]);
   const [activeGrowId, setActiveGrowId] = useState(null);
   const [logs, setLogs] = useState([]);
   const [checkingIn, setCheckingIn] = useState(null);
@@ -832,6 +877,11 @@ export default function GrowTracker() {
           color:    p.color || "#667",
         })));
       })
+      .catch(() => {});
+
+    fetch("/api/strains")
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data)) setStrains(data); })
       .catch(() => {});
 
     fetchLogs();
@@ -929,23 +979,17 @@ export default function GrowTracker() {
         </div>
       </div>
 
-      {!isPlanning && (
-        <div style={{ display: "flex", borderBottom: "1px solid #1a2a1a" }}>
-          {["plants", "log"].map(v => (
-            <button key={v} onClick={() => setView(v)}
-              style={{ flex: 1, padding: "10px", background: "none", border: "none", borderBottom: `2px solid ${view === v ? grow.accentColor : "transparent"}`, color: view === v ? grow.accentColor : "#445", fontFamily: "'Courier New', monospace", fontSize: "0.65rem", letterSpacing: "0.1em", cursor: "pointer" }}>
-              {v === "plants" ? "PLANTS" : `LOG (${growLogs.length})`}
-            </button>
-          ))}
-        </div>
-      )}
+      <div style={{ display: "flex", borderBottom: "1px solid #1a2a1a" }}>
+        {["plants", "log", "strains", ...(isPlanning ? ["plan"] : [])].map(v => (
+          <button key={v} onClick={() => setView(v)}
+            style={{ flex: 1, padding: "10px", background: "none", border: "none", borderBottom: `2px solid ${view === v ? grow.accentColor : "transparent"}`, color: view === v ? grow.accentColor : "#445", fontFamily: "'Courier New', monospace", fontSize: "0.65rem", letterSpacing: "0.1em", cursor: "pointer" }}>
+            {v === "plants" ? "PLANTS" : v === "log" ? `LOG (${growLogs.length})` : v === "strains" ? "STRAINS" : "PLAN"}
+          </button>
+        ))}
+      </div>
 
       <div style={{ padding: "1rem", paddingBottom: "80px" }}>
-        {isPlanning && (
-          <WinterPlanning grow={grow} plants={growPlants} checklist={winterChecklist} onToggle={toggleChecklist} notes={winterNotes} onNotesChange={setWinterNotes} />
-        )}
-
-        {!isPlanning && view === "plants" && (
+        {view === "plants" && (
           <>
             {grow.weeklyContext && (
               <div style={{ background: "#0D100D", border: "1px solid #1a3a1a", borderRadius: "8px", padding: "1rem", marginBottom: "1.25rem" }}>
@@ -962,12 +1006,16 @@ export default function GrowTracker() {
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              {growPlants.map(p => <PlantCard key={p.id} plant={p} logs={logs} onCheckIn={setCheckingIn} />)}
+              {growPlants.map(p =>
+                p.status?.toLowerCase() === "seed"
+                  ? <SeedCard key={p.id} plant={p} />
+                  : <PlantCard key={p.id} plant={p} logs={logs} onCheckIn={setCheckingIn} />
+              )}
             </div>
           </>
         )}
 
-        {!isPlanning && view === "log" && (
+        {view === "log" && (
           <div>
             {growLogs.length === 0 ? (
               <div style={{ textAlign: "center", padding: "3rem 1rem", color: "#334", fontSize: "0.75rem", letterSpacing: "0.06em" }}>
@@ -998,6 +1046,27 @@ export default function GrowTracker() {
             )}
           </div>
         )}
+        {view === "plan" && isPlanning && (
+          <WinterPlanning grow={grow} plants={growPlants} checklist={winterChecklist} onToggle={toggleChecklist} notes={winterNotes} onNotesChange={setWinterNotes} />
+        )}
+
+        {view === "strains" && (() => {
+          // Group growPlants by strain name; use strain metadata from plant.strain
+          const strainMap = {};
+          for (const p of growPlants) {
+            if (!p.strain?.name) continue;
+            if (!strainMap[p.strain.name]) strainMap[p.strain.name] = { strain: p.strain, plants: [] };
+            strainMap[p.strain.name].plants.push(p);
+          }
+          const strainCards = Object.values(strainMap);
+          return strainCards.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "2rem", fontSize: "0.65rem", color: "#334", fontFamily: "'Courier New', monospace", letterSpacing: "0.1em" }}>
+              NO STRAINS FOUND
+            </div>
+          ) : strainCards.map(({ strain, plants: sp }) => (
+            <StrainCard key={strain.name} strain={strain} linkedPlants={sp} accentColor={grow.accentColor} />
+          ));
+        })()}
       </div>
 
       {!batchOpen && !checkingIn && (
